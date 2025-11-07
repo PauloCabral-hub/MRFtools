@@ -1,0 +1,6 @@
+# folders to ignore
+data_folder/
+virtual/
+
+# files to ignore
+*.Identifier
