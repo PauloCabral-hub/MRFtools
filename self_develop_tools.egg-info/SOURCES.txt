@@ -1,0 +1,11 @@
+setup.py
+self_dev_tools/__init__.py
+self_dev_tools/module1sdt.py
+self_dev_tools/module2sdt.py
+self_dev_tools/module3sdt.py
+self_dev_tools/module4sdt.py
+self_dev_tools/module5sdt.py
+self_develop_tools.egg-info/PKG-INFO
+self_develop_tools.egg-info/SOURCES.txt
+self_develop_tools.egg-info/dependency_links.txt
+self_develop_tools.egg-info/top_level.txt

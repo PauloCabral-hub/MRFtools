@@ -371,6 +371,7 @@ def estimate_neighborhoods(train_data, c_cte=0.1, max_ne=10, chunk_size=200, max
     """
     Estimates the neighborhood for each choice using the training set in chunks,
     with explicit garbage collection and limited candidate space to manage memory usage.
+    !! ATTENTION: All choice nodes are labeled 32 !!
 
     Parameters:
     -----------
@@ -392,6 +393,7 @@ def estimate_neighborhoods(train_data, c_cte=0.1, max_ne=10, chunk_size=200, max
     global_summaries : dict
         A dictionary where keys are choice labels and values are the global summaries.
     """
+
     # Extract EEG features
     eeg_columns = [col for col in train_data.columns if not col.startswith('choice')]
 
@@ -400,9 +402,9 @@ def estimate_neighborhoods(train_data, c_cte=0.1, max_ne=10, chunk_size=200, max
     global_summaries = {}
 
     # Loop over each choice with a progress bar
+
     for choice in tqdm(['choice0', 'choice1', 'choice2'], desc="Estimating neighborhoods"):
         chunked_input_arrays = []
-
         # Process data in chunks
         for start in tqdm(range(0, len(train_data), chunk_size), desc=f"Processing {choice} in chunks", leave=False):
             end = start + chunk_size

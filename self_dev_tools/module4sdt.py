@@ -222,6 +222,7 @@ def test_method(prob, c_cte, ne_num, rep_num, samp_size):
 def generate_prediction_v2(noi_key, state, global_summaries):
     """
     """
+
     if noi_key not in global_summaries.keys():
         print('noi key must be in global_summaries')
         return 'no_output', 'no_output'
@@ -230,6 +231,7 @@ def generate_prediction_v2(noi_key, state, global_summaries):
     check_board = associate_summary['joint_configs']
 
     # Find all rows where the neighbor states match
+
     options = []
     for i in range(check_board.shape[0]):
         if check_board[i, 1:].tolist() == state:
@@ -271,64 +273,154 @@ def generate_prediction_v2(noi_key, state, global_summaries):
 
     return prediction, best_prob
 
+def generate_prediction_v3(noi_key, state, global_summaries):
+    """
+    Returns the probability that the target choice is 1, given the neighbor states.
+    """
+    if noi_key not in global_summaries.keys():
+        print('noi_key must be in global_summaries')
+        return 0.0  # Default to 0 if the key is missing
+
+    associate_summary = global_summaries[noi_key]
+    check_board = associate_summary['joint_configs']
+
+    # Find all rows where the neighbor states match
+    options = []
+    for i in range(check_board.shape[0]):
+        if len(state) == len(associate_summary['cdate']):
+            if check_board[i, 1:].tolist() == state:
+                options.append(i)
+
+    if len(options) > 0:
+        # Find the probability that the target choice is 1 for this neighbor state
+        for idx in options:
+            if check_board[idx, 0] == 1:  # If the target is 1 in this configuration
+                return associate_summary['probabilities'][idx]
+        # If no matching configuration has target=1, return 0
+        return 0.0
+    else:
+        # Fallback: Use marginal probability of the target being 1
+        p1_num = 0
+        p_den = 0
+        for i in range(check_board.shape[0]):
+            if check_board[i, 0] == 1:
+                p1_num += associate_summary['joint_count'][i]
+            p_den += associate_summary['joint_count'][i]
+        return p1_num / p_den if p_den > 0 else 0.0  # P(target=1)
+
+
 
 # TARGET FUNCTION
 def predict_testdata(test_data, neighborhoods, global_summaries):
     """
-    Generates predicted probabilities for each choice in the test set using generate_prediction_v2.
-
-    Parameters:
-    -----------
-    test_data : pandas.DataFrame
-        The test set.
-    neighborhoods : dict
-        Estimated neighborhood matrices for each choice.
-    global_summaries : dict
-        Global summaries for each choice.
-
-    Returns:
-    --------
-    predictions : dict
-        A dictionary where keys are choice labels and values are tuples of (predicted label, probability) for each trial.
-    true_labels : dict
-        A dictionary where keys are choice labels and values are true labels for each trial.
+    Generates predicted probabilities for each choice being 1 in the test set.
+    Returns the predicted choice (0, 1, or 2) for each trial.
     """
-    # Ensuring test data have the correct indexes
+    # Ensure test data have the correct indexes
     test_data = test_data.reset_index(drop=True)
-    
+
     # Extract EEG features from the test set
     eeg_columns = [col for col in test_data.columns if not col.startswith('choice')]
     eeg_test = test_data[eeg_columns].values.astype(np.float32)
-    
-    # Initialize dictionaries to store predictions and true labels
-    predictions = {choice: [] for choice in ['choice0', 'choice1', 'choice2']}
-    true_labels = {choice: [] for choice in ['choice0', 'choice1', 'choice2']}
-    
+
+    # Initialize lists to store predictions and true labels
+    predictions = []  # Predicted choice (0, 1, or 2) for each trial
+    true_labels = []   # True choice (0, 1, or 2) for each trial
+
     # Loop over each trial in the test set
     for trial in range(eeg_test.shape[0]):
-        # Extract the EEG features for the current trial
-        trial_features = eeg_test[trial, :]
-    
+        choice_probs = []
+
         # Loop over each choice
         for choice in ['choice0', 'choice1', 'choice2']:
             associate_summary = global_summaries[choice]
-    
-            # Get the neighborhood state for the current trial
-            ne_indexes = [int(i) for i in associate_summary['cdate'] ]
-            if len(ne_indexes) == 0:
-                state = list()
-            else:
-                state = test_data.iloc[trial, ne_indexes].to_list()
-    
-            # Generate prediction for the current choice using generate_prediction_v2
-            prediction, best_prob = generate_prediction_v2(choice, state, global_summaries)
-    
-            predictions[choice].append((prediction, best_prob))
-    
-            # Store the true label
-            true_labels[choice].append(test_data[choice].iloc[trial])
+            ne_indexes = [int(i) for i in associate_summary['cdate']]
+            state = test_data.iloc[trial, ne_indexes].to_list() if ne_indexes else []
+
+            # Get P(choice == 1 | neighbors)
+            prob = generate_prediction_v3(choice, state, global_summaries)
+            choice_probs.append(prob)
+
+        # Normalize probabilities to sum to 1 (softmax-like)
+        prob_sum = sum(choice_probs)
+        if prob_sum > 0:
+            normalized_probs = [p / prob_sum for p in choice_probs]
+        else:
+            # Fallback: uniform distribution if all probabilities are 0
+            normalized_probs = [1/3, 1/3, 1/3]
+
+        # Predict the choice with the highest probability
+        predicted_choice = np.argmax(normalized_probs)
+        predictions.append(predicted_choice)
+
+        # Determine the true choice (0, 1, or 2)
+        true_choice = -1
+        for ilab, choice_lab in enumerate(['choice0', 'choice1', 'choice2']):
+            if test_data[choice_lab].iloc[trial] == 1:
+                true_choice = ilab
+                break
+        true_labels.append(true_choice)
 
     return predictions, true_labels
+
+# bup > 
+# def predict_testdata(test_data, neighborhoods, global_summaries):
+#     """
+#     Generates predicted probabilities for each choice in the test set using generate_prediction_v2.
+
+#     Parameters:
+#     -----------
+#     test_data : pandas.DataFrame
+#         The test set.
+#     neighborhoods : dict
+#         Estimated neighborhood matrices for each choice.
+#     global_summaries : dict
+#         Global summaries for each choice.
+
+#     Returns:
+#     --------
+#     predictions : dict
+#         A dictionary where keys are choice labels and values are tuples of (predicted label, probability) for each trial.
+#     true_labels : dict
+#         A dictionary where keys are choice labels and values are true labels for each trial.
+#     """
+#     # Ensuring test data have the correct indexes
+#     test_data = test_data.reset_index(drop=True)
+    
+#     # Extract EEG features from the test set
+#     eeg_columns = [col for col in test_data.columns if not col.startswith('choice')]
+#     eeg_test = test_data[eeg_columns].values.astype(np.float32)
+    
+#     # Initialize dictionaries to store predictions and true labels
+#     predictions = {choice: [] for choice in ['choice0', 'choice1', 'choice2']}
+#     true_labels = {choice: [] for choice in ['choice0', 'choice1', 'choice2']}
+    
+#     # Loop over each trial in the test set
+#     for trial in range(eeg_test.shape[0]):
+#         # Extract the EEG features for the current trial
+#         trial_features = eeg_test[trial, :]
+    
+#         # Loop over each choice
+#         for choice in ['choice0', 'choice1', 'choice2']:
+#             associate_summary = global_summaries[choice]
+    
+#             # Get the neighborhood state for the current trial
+#             ne_indexes = [int(i) for i in associate_summary['cdate'] ]
+#             if len(ne_indexes) == 0:
+#                 state = list()
+#             else:
+#                 state = test_data.iloc[trial, ne_indexes].to_list()
+    
+#             # Generate prediction for the current choice using generate_prediction_v2
+#             prediction, best_prob = generate_prediction_v2(choice, state, global_summaries)
+    
+#             predictions[choice].append((prediction, best_prob))
+    
+#             # Store the true label
+#             true_labels[choice].append(test_data[choice].iloc[trial])
+
+#     return predictions, true_labels
+# bup <
 
 def compute_auc(true_labels, predictions):
     """
