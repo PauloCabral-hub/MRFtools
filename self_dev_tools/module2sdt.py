@@ -208,40 +208,48 @@ def associate_cdate(input_array, node, cdate):
                          'joint_configs': joint_configs, 'joint_count': joint_count, 'cdconfig_map': cdconfig_map}
     return associate_summary
 
+
+
 def calculate_likelihood(associate_summary):
-  """
-  Calculates the likelihood of a node's state given its candidate neighborhood.
+    """
+    Calculates the likelihood of a node's state given its candidate neighborhood.
 
-  This function computes the likelihood of observing the data under the assumption that the candidate
-  neighborhood is the true neighborhood. It calculates the conditional probability of the node's state
-  given each neighborhood configuration and computes the overall likelihood as the product of these probabilities.
+    This function computes the likelihood of observing the data under the assumption that the candidate
+    neighborhood is the true neighborhood. It calculates the conditional probability of the node's state
+    given each neighborhood configuration and computes the overall likelihood as the product of these probabilities.
 
-  Parameters:
-  -----------
-  associate_summary : dict
-      The output of `associate_cdate`, containing joint configurations and their counts.
+    Parameters:
+    -----------
+    associate_summary : dict
+        The output of `associate_cdate`, containing joint configurations and their counts.
 
-  Returns:
-  --------
-  associate_summary : dict
-      The input dictionary, updated with:
-      - 'probabilities': Conditional probabilities of the node's state given each neighborhood configuration.
-      - 'll_hood': The overall likelihood of the data given the candidate neighborhood.
+    Returns:
+    --------
+    associate_summary : dict
+        The input dictionary, updated with:
+        - 'probabilities': Conditional probabilities of the node's state given each neighborhood configuration.
+        - 'll_hood': The overall likelihood of the data given the candidate neighborhood.
 
-  Author: Paulo Roberto Cabral Passos
-  Date: October 20, 2025
-  """
-  ll_hood = 1
-  associate_summary['probabilities'] = np.zeros(associate_summary['joint_configs'].shape[0])
-  for c in range(associate_summary['joint_configs'].shape[0]):
-    if associate_summary['joint_count'][c] != 0:
-      p_num = associate_summary['joint_count'][c]
-      p_den = associate_summary['cdnhood_count'][  int(associate_summary['cdconfig_map'][c])    ]
-      associate_summary['probabilities'][c] = p_num/p_den
-      p = (p_num/p_den)**p_num
-      ll_hood = ll_hood*p
-  associate_summary['ll_hood'] = ll_hood
-  return associate_summary
+    Author: Paulo Roberto Cabral Passos
+    Date: October 20, 2025
+    """
+    ll_hood = 0.0  # Initialize log-likelihood
+    associate_summary['probabilities'] = np.zeros(associate_summary['joint_configs'].shape[0])
+
+    for c in range(associate_summary['joint_configs'].shape[0]):
+        p_num = associate_summary['joint_count'][c]
+        p_den = associate_summary['cdnhood_count'][int(associate_summary['cdconfig_map'][c])]
+
+        # Skip if either p_num or p_den is 0
+        if p_num == 0 or p_den == 0:
+            continue
+
+        associate_summary['probabilities'][c] = p_num / p_den
+        ll_hood += p_num * np.log(p_num / p_den)  # Safe: p_num > 0 and p_den > 0
+
+    # Convert log-likelihood back to likelihood
+    associate_summary['ll_hood'] = np.exp(ll_hood) if ll_hood > -1e10 else 0.0  # Avoid underflow
+    return associate_summary
 
 def penalize_llhood(associate_summary, c, N):
     """

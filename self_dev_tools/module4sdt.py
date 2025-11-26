@@ -10,7 +10,79 @@ from collections import defaultdict
 from self_dev_tools import module1sdt as m1sdt
 from self_dev_tools import module2sdt as m2sdt
 from self_dev_tools  import module3sdt as m3sdt
-from sklearn.metrics import roc_curve, auc, roc_auc_score
+from sklearn.metrics import roc_curve, auc, roc_auc_score, accuracy_score
+
+import numpy as np
+import itertools
+
+import numpy as np
+import itertools
+
+def generate_neighborhood_probabilities(ne_num):
+    """
+    Generates a matrix of probability values for a node given all possible neighborhood states.
+
+    Parameters:
+    -----------
+    ne_num : int
+        Number of neighbors.
+
+    Returns:
+    --------
+    prob_matrix : numpy.ndarray
+        Matrix of shape (2^ne_num, 2) where each row contains [P(node=0 | neighbors), P(node=1 | neighbors)].
+    neighborhood_states : list
+        List of all possible neighborhood states (each state is a list of 0s and 1s).
+    """
+    # Generate all possible neighborhood states
+    neighborhood_states = list(itertools.product([0, 1], repeat=ne_num))
+
+    # Generate random probabilities for each state (summing to 1)
+    prob_matrix = np.random.rand(len(neighborhood_states), 2)
+    prob_matrix = prob_matrix / prob_matrix.sum(axis=1, keepdims=True)  # Normalize rows to sum to 1
+
+    return prob_matrix, neighborhood_states
+
+import numpy as np
+
+def generate_data_from_neighborhoods(ne_num, samp_size, prob_matrix, neighborhood_states):
+    """
+    Generates data for a node v and its neighbors u, where v depends on the neighborhood states.
+
+    Parameters:
+    -----------
+    ne_num : int
+        Number of neighbors.
+    samp_size : int
+        Number of samples to generate.
+    prob_matrix : numpy.ndarray
+        Matrix of shape (2^ne_num, 2) where each row contains [P(v=0 | neighbors), P(v=1 | neighbors)].
+    neighborhood_states : list
+        List of all possible neighborhood states (each state is a tuple of 0s and 1s).
+
+    Returns:
+    --------
+    input_array : numpy.ndarray
+        Array of shape (samp_size, ne_num + 1) where the first column is v and the rest are neighbors.
+    """
+    # Initialize v and u (neighbors)
+    v = np.zeros(samp_size, dtype=int)
+    u = np.random.randint(0, 2, (samp_size, ne_num))  # Random neighbor vectors
+
+    # For each sample, determine v based on the neighborhood state
+    for i in range(samp_size):
+        # Get the current neighborhood state
+        current_state = tuple(u[i, :])
+        state_idx = neighborhood_states.index(current_state)
+
+        # Sample v based on the probabilities for this neighborhood state
+        v[i] = np.random.choice([0, 1], p=prob_matrix[state_idx])
+
+    # Combine v and u into a single array
+    input_array = np.column_stack([v, u])
+    return input_array
+
+
 
 def simulate_and_test(flip_probabilities, penalty_constants, n_repeats=50, n_samples=500):
     """
@@ -141,6 +213,31 @@ def simulate_and_test2(flip_probabilities, penalty_constants, max_neighbors=8, n
 
     return results
 
+def add_noise_to_prob_matrix(prob_matrix, prob):
+    """
+    Adds noise to a probability matrix by blending it with a uniform distribution.
+
+    Parameters:
+    -----------
+    prob_matrix : numpy.ndarray
+        Original probability matrix of shape (num_states, 2), where each row is [P(v=0 | neighbors), P(v=1 | neighbors)].
+    prob : float
+        Probability of noise (i.e., probability that v ignores its neighbors and is random).
+
+    Returns:
+    --------
+    noisy_prob_matrix : numpy.ndarray
+        Noisy version of the probability matrix, where with probability `prob`, v is random (50% chance of 0 or 1).
+    """
+    # Uniform distribution (50% chance of 0 or 1)
+    uniform_probs = np.array([[0.5, 0.5]])
+
+    # Blend the original probabilities with the uniform distribution
+    noisy_prob_matrix = (1 - prob) * prob_matrix + prob * uniform_probs
+
+    return noisy_prob_matrix
+
+
 def test_method(prob, c_cte, ne_num, rep_num, samp_size):
     """
     Tests the neighborhood detection method with balanced true/false cases.
@@ -181,12 +278,20 @@ def test_method(prob, c_cte, ne_num, rep_num, samp_size):
     np.random.shuffle(labels)
     results = np.zeros(labels.shape[0])
 
+    # d1[
+    prob_matrix, neighborhood_states = generate_neighborhood_probabilities(ne_num) 
+    # d1]
     for rep in range(labels.shape[0]):
         if labels[rep] == 1:
             # True neighbors: node 0 + ne_num-1 noisy copies
-            v = np.random.randint(0, 2, samp_size)
-            u = [m3sdt.flip_with_probability(v, prob) for _ in range(ne_num)]
-            input_array = np.column_stack([v] + u)
+            # bup 3>            
+            # v = np.random.randint(0, 2, samp_size)
+            # u = [m3sdt.flip_with_probability(v, prob) for _ in range(ne_num)]
+            # input_array = np.column_stack([v] + u)
+            # d2[
+            noisy_prob_matrix = add_noise_to_prob_matrix(prob_matrix, prob)
+            input_array = generate_data_from_neighborhoods(ne_num, samp_size, noisy_prob_matrix, neighborhood_states)
+            # d2]
         else:
             # All random nodes (node 0 + ne_num-1 irrelevant nodes + extra irrelevant nodes)
             v = np.random.randint(0, 2, samp_size)
@@ -503,3 +608,20 @@ def predict_final_label(predictions):
         final_labels.append(final_label)
 
     return final_labels
+
+
+def compute_accuracy(true_labels, predictions):
+    """
+    Computes the accuracy of multiclass predictions.
+    Parameters:
+    -----------
+    true_labels : list
+        True choice labels (0, 1, or 2) for each trial.
+    predictions : list
+        Predicted choice labels (0, 1, or 2) for each trial.
+    Returns:
+    --------
+    accuracy : float
+        Fraction of correct predictions.
+    """
+    return accuracy_score(true_labels, predictions)
